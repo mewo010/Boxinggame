@@ -1,0 +1,123 @@
+name: Build Boxing Ring 3D Executable
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ursina opencv-python mediapipe==0.10.14 pyinstaller
+
+      - name: Create PyInstaller Spec File
+        shell: powershell
+        run: |
+          $specContent = @"
+          # -*- mode: python ; coding: utf-8 -*-
+          import sys
+          import os
+          import ursina
+          import mediapipe
+
+          block_cipher = None
+
+          # Locate Ursina and MediaPipe package directories for data collection
+          ursina_path = os.path.dirname(ursina.__file__)
+          mediapipe_path = os.path.dirname(mediapipe.__file__)
+
+          datas = [
+              (ursina_path, 'ursina'),
+              (mediapipe_path, 'mediapipe'),
+          ]
+
+          hiddenimports = [
+              'ursina',
+              'ursina.shaders',
+              'panda3d.core',
+              'panda3d.direct',
+              'mediapipe',
+              'mediapipe.python',
+              'mediapipe.python.solutions',
+              'mediapipe.python.solutions.pose',
+              'cv2',
+          ]
+
+          a = Analysis(
+              ['main.py'],
+              pathex=[],
+              binaries=[],
+              datas=datas,
+              hiddenimports=hiddenimports,
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=[],
+              win_no_prefer_redirects=False,
+              win_private_assemblies=False,
+              cipher=block_cipher,
+              noarchive=False,
+          )
+
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+          exe = EXE(
+              pyz,
+              a.scripts,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              [],
+              name='BoxingRing3D',
+              debug=False,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=True,
+              upx_exclude=[],
+              runtime_tmpdir=None,
+              console=False,
+              disable_windowed_traceback=False,
+              argv_emulation=False,
+              target_arch=None,
+              codesign_identity=None,
+              entitlements_file=None,
+              icon=None,
+          )
+          "@
+          Set-Content -Path "build.spec" -Value $specContent
+
+      - name: Build executable with PyInstaller
+        run: |
+          pyinstaller --noconfirm build.spec
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoxingRing3D-Windows
+          path: dist/BoxingRing3D.exe
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/BoxingRing3D.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
